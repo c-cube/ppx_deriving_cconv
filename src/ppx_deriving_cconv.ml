@@ -140,7 +140,7 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
             in
             let enc_name = attr_name name' pcd_attributes in
             (* result is name,arguments *)
-            let result = [%expr ([%e AC.str enc_name], [%e args])] in
+            let result = AC.tuple [AC.str enc_name; args] in
             (* the pattern case itself *)
             AH.Exp.case
               (AC.pconstr name' (List.mapi (fun i _ -> AC.pvar (argn i)) pcd_args))
@@ -149,8 +149,8 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
         in
         let f = AH.Exp.function_ cases in
         if !self_used
-          then [%expr CConv.Encode.sum [%e f]]
-          else [%expr CConv.Encode.sum_fix (fun self -> [%e f])]
+        then [%expr CConv.Encode.sum_fix (fun self -> [%e f]) ]
+        else [%expr CConv.Encode.sum [%e f]]
     | Ptype_record labels, _ ->
         failwith "record: TODO"
         (*
