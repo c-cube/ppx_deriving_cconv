@@ -1,0 +1,24 @@
+opam-version: "1.2"
+author: "Simon Cruanes"
+maintainer: "simon.cruanes@inria.fr"
+license: "MIT"
+homepage: "https://github.com/c-cube/ppx_deriving_cconv"
+bug-reports: "https://github.com/c-cube/ppx_deriving_cconv/issues"
+dev-repo: "git://github.com/c-cube/ppx_deriving_cconv.git"
+tags: [ "syntax" "cconv" "ppx" ]
+build: [
+  make "all"
+]
+install: [
+  make "install"
+]
+remove: [
+  "ocamlfind" "remove" "ppx_deriving_cconv"
+]
+depends: [
+  "cconv"
+  "ppx_tools"
+  "ppx_deriving" {>= "1.0"}
+  "ocamlfind"    {build}
+]
+

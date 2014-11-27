@@ -1,0 +1,8 @@
+version = "0.1"
+description = "[@@deriving cconv]"
+requires(-ppx_driver) = "ppx_deriving cconv"
+ppxopt(-ppx_driver) = "ppx_deriving,./ppx_deriving_cconv.cma"
+requires(ppx_driver) = "ppx_deriving.api"
+archive(ppx_driver, byte) = "ppx_deriving_cconv.cma"
+archive(ppx_driver, native) = "ppx_deriving_cconv.cmxa"
+exists_if = "ppx_deriving_cconv.cma"
