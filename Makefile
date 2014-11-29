@@ -17,4 +17,10 @@ install: all
 uninstall:
 	ocamlfind remove $(NAME)
 
-.PHONY: all clean install uninstall
+build-tests: all
+	$(OCAMLBUILD) $(OPTIONS) tests/run_tests.native
+
+tests: build-tests
+	./run_tests.native
+
+.PHONY: all clean install uninstall tests

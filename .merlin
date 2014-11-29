@@ -1,5 +1,8 @@
-S src
+S src/
 B _build/src/
+S tests/
+B _build/tests/
 PKG compiler-libs.common
 PKG ppx_deriving.api
 PKG cconv
+PKG oUnit
