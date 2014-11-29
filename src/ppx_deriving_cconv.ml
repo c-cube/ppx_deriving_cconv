@@ -194,13 +194,178 @@ let encode_sig_of_type ~options ~path type_decl =
     (polymorphize_enc  [%type: [%t typ] CConv.Encode.encoder]))
   ]
 
+(* generate a [typ CConv.Encode.decode] for the given [typ].
+  @param self an option contains the type being defined, and a reference
+    indicating whether a self-reference was used *)
+let decode_of_typ ~self typ =
+  let rec decode_of_typ typ = match typ with
+  | [%type: int]             -> [%expr CConv.Decode.int]
+  | [%type: float]           -> [%expr CConv.Decode.float]
+  | [%type: bool]            -> [%expr CConv.Decode.bool]
+  | [%type: string]          -> [%expr CConv.Decode.string]
+  | [%type: bytes]           -> [%expr CConv.Decode.(map Bytes.to_string string)]
+  | [%type: char]            -> [%expr CConv.Decode.(map (String.make 1) string)]
+  | [%type: [%t? typ] ref]   -> [%expr CConv.Decode.(map (!) [%e decode_of_typ typ])]
+  | [%type: [%t? typ] list]  -> [%expr CConv.Decode.(list [%e decode_of_typ typ])]
+  | [%type: int32] | [%type: Int32.t] ->
+      [%expr CConv.Decode.(map Int32.of_int int)]
+  | [%type: int64] | [%type: Int64.t] ->
+      [%expr CConv.Decode.(map Int64.of_string string)]
+  | [%type: nativeint] | [%type: Nativeint.t] ->
+      [%expr CConv.Decode.(map Nativeint.of_string string)]
+  | [%type: [%t? typ] array] ->
+      [%expr CConv.Decode.(array [%e decode_of_typ typ])]
+  | [%type: [%t? typ] option] ->
+      [%expr CConv.Decode.(option [%e decode_of_typ typ])]
+  | { ptyp_desc = Ptyp_constr ({ txt = lid }, args) } ->
+      begin match self with
+      | Some (name, used) when Longident.last lid=name ->
+          (* typ is actually a recursive reference to the type
+            being defined. Use a "self" variables that will be bound
+            with [CConv.Decode.record_fix] or [CConv.Decode.sum_fix] *)
+          used := true;
+          AC.evar "self"
+      | _ ->
+          AC.app
+            (AH.Exp.ident (mknoloc (Ppx_deriving.mangle_lid decode_prefix lid)))
+            (List.map decode_of_typ args)
+      end
+  | { ptyp_desc = Ptyp_tuple typs } ->
+      (* decode tuple, matching on the list *)
+      [%expr CConv.Decode.(tuple {tuple_accept=fun src args ->
+        match args with
+        | [%p   (* didn't find how to build pattern [v1; v2; ...; vn] *)
+            fold_right_i
+            (fun i ty pat -> [%pat? [%p AC.pvar (argn i)] :: [%p pat]])
+            typs [%pat? []]
+          ] ->
+          [%e AC.tuple (List.mapi
+            (fun i ty ->
+              [%expr CConv.Decode.apply src
+                [%e decode_of_typ ty]
+                [%e AC.evar (argn i)]
+              ]
+            ) typs
+          )]
+        | _ ->
+          CConv.report_error "expected %d-ary tuple"
+            [%e AC.int (List.length typs)]
+      })]
+  | { ptyp_desc = Ptyp_variant (fields, _, _); ptyp_loc } ->
+      raise_errorf ~loc:ptyp_loc "%s cannot be derived for poly variants" deriver
+  | { ptyp_desc = Ptyp_var name } ->
+      [%expr ([%e AC.evar ("poly_"^name)] : 'a CConv.Decode.decoder)]
+  | { ptyp_desc = Ptyp_alias (typ, name) } -> decode_of_typ typ
+  | { ptyp_loc } ->
+      raise_errorf ~loc:ptyp_loc "%s cannot be derived for %s"
+                   deriver (Ppx_deriving.string_of_core_type typ)
+  in
+  decode_of_typ typ
+
+(* make an decoder from a type declaration *)
+let decode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
+  ignore (parse_options options);
+  let decoder =
+    match type_decl.ptype_kind, type_decl.ptype_manifest with
+    | Ptype_abstract, Some manifest -> decode_of_typ ~self:None manifest
+    | Ptype_variant constrs, _ ->
+        let self_used = ref false in
+        let self = Some (type_decl.ptype_name.txt, self_used) in
+        (* generate pattern matching cases *)
+        let cases = List.map
+          (fun { pcd_name = { txt = name' }; pcd_args; pcd_attributes } ->
+            AH.Exp.case
+              [%pat?
+                ([%p AC.pstr name'],
+                 [%p AC.plist (List.mapi (fun i ty -> AC.pvar (argn i)) pcd_args)]
+                )
+              ]
+              (AC.constr name'
+                (List.mapi
+                  (fun i ty ->
+                    [%expr CConv.Decode.apply src
+                      [%e decode_of_typ ~self ty]
+                      [%e AC.evar (argn i)]
+                    ]
+                  ) pcd_args
+                )
+              )
+          ) constrs
+        and last_case = AH.Exp.case
+          (AH.Pat.any ()) [%expr CConv.report_error "expected sum"]
+        in
+        let sum_decoder = [%expr fun src name args ->
+          [%e AH.Exp.match_
+            [%expr (name,args)]
+            (cases @ [last_case])
+          ]
+        ] in
+        if !self_used
+        then [%expr CConv.Decode.sum_fix (fun self -> {sum_accept=[%e sum_decoder]}) ]
+        else [%expr CConv.Decode.sum {sum_accept=[%e sum_decoder]}]
+    | Ptype_record labels, _ ->
+        let self_used = ref false in
+        let self = Some (type_decl.ptype_name.txt, self_used) in
+        (* build a list of
+            let field = record_get "field" (decode field) src args in ... *)
+        let bindings = fold_right_i
+          (fun i field tail ->
+            [%expr
+              let [%p AC.pvar field.pld_name.txt] =
+                CConv.Decode.record_get
+                [%e AC.str field.pld_name.txt]
+                [%e (decode_of_typ ~self field.pld_type)]
+                src
+                args in
+              [%e tail]
+            ]
+          ) labels
+          (AC.record (* build the record *)
+            (List.map
+              (fun field ->
+                let name = field.pld_name.txt in
+                name, AC.evar name
+              ) labels
+            )
+          )
+        in
+        let record_decoder = [%expr
+          {record_accept=fun src args -> [%e bindings] }
+        ] in
+        if !self_used
+        then [%expr CConv.Decode.record_fix (fun self -> [%e record_decoder])]
+        else [%expr CConv.Decode.record [%e record_decoder]]
+    | Ptype_abstract, None ->
+        raise_errorf ~loc "%s cannot be derived for fully abstract types" deriver
+    | Ptype_open, _        ->
+        raise_errorf ~loc "%s cannot be derived for open types" deriver
+  in
+  let polymorphize = Ppx_deriving.poly_fun_of_type_decl type_decl in
+  [AH.Vb.mk
+    (AC.pvar (Ppx_deriving.mangle_type_decl decode_prefix type_decl))
+    (polymorphize [%expr ([%e decoder] : _ CConv.Decode.decoder)])]
+
+(* signature of the generated encoder *)
+let decode_sig_of_type ~options ~path type_decl =
+  ignore (parse_options options);
+  let typ = Ppx_deriving.core_type_of_type_decl type_decl in
+  let polymorphize_enc =
+    Ppx_deriving.poly_arrow_of_type_decl
+      (fun var -> [%type: [%t var] CConv.Encode.decoder])
+      type_decl
+  in
+  [AH.Sig.value
+    (AH.Val.mk (mknoloc (Ppx_deriving.mangle_type_decl encode_prefix type_decl))
+    (polymorphize_enc  [%type: [%t typ] CConv.Encode.decoder]))
+  ]
+
 let str_of_type ~options ~path type_decl =
-  encode_of_type ~options ~path type_decl
-  (* TODO @ desu_str_of_type ~options ~path type_decl *)
+  encode_of_type ~options ~path type_decl @
+  decode_of_type ~options ~path type_decl
 
 let sig_of_type ~options ~path type_decl =
-  encode_sig_of_type ~options ~path type_decl
-  (* TODO @ desu_sig_of_type ~options ~path type_decl *)
+  encode_sig_of_type ~options ~path type_decl @
+  decode_sig_of_type ~options ~path type_decl
 
 let () =
   Ppx_deriving.(register "cconv" {
@@ -219,13 +384,12 @@ let () =
     signature = (fun ~options ~path type_decls ->
       List.concat (List.map (encode_sig_of_type ~options ~path) type_decls));
   });
-  (* TODO
   Ppx_deriving.(register "decode" {
-    core_type = Some (fun typ -> (desu_expr_of_typ ~path:[] typ));
+    core_type = Some (fun typ -> (decode_of_typ None typ));
     structure = (fun ~options ~path type_decls ->
-      [Str.value Recursive (List.concat (List.map (desu_str_of_type ~options ~path) type_decls))]);
+      [AH.Str.value Nonrecursive
+        (List.concat (List.map (decode_of_type ~options ~path) type_decls))]);
     signature = (fun ~options ~path type_decls ->
-      List.concat (List.map (desu_sig_of_type ~options ~path) type_decls));
+      List.concat (List.map (decode_sig_of_type ~options ~path) type_decls));
   });
-  *)
   ()
