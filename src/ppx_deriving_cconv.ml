@@ -294,15 +294,15 @@ let decode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
         and last_case = AH.Exp.case
           (AH.Pat.any ()) [%expr CConv.report_error "expected sum"]
         in
-        let sum_decoder = [%expr fun src name args ->
+        let sum_decoder = [%expr {CConv.Decode.sum_accept=fun src name args ->
           [%e AH.Exp.match_
             [%expr (name,args)]
             (cases @ [last_case])
           ]
-        ] in
+        }] in
         if !self_used
-        then [%expr CConv.Decode.sum_fix (fun self -> {sum_accept=[%e sum_decoder]}) ]
-        else [%expr CConv.Decode.sum {sum_accept=[%e sum_decoder]}]
+        then [%expr CConv.Decode.sum_fix (fun self -> [%e sum_decoder]) ]
+        else [%expr CConv.Decode.sum [%e sum_decoder]]
     | Ptype_record labels, _ ->
         let self_used = ref false in
         let self = Some (type_decl.ptype_name.txt, self_used) in
@@ -330,7 +330,7 @@ let decode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
           )
         in
         let record_decoder = [%expr
-          {record_accept=fun src args -> [%e bindings] }
+          {CConv.Decode.record_accept=fun src args -> [%e bindings] }
         ] in
         if !self_used
         then [%expr CConv.Decode.record_fix (fun self -> [%e record_decoder])]
