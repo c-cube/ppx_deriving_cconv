@@ -10,8 +10,8 @@ module AC = Ast_convenience
 let deriver = "cconv"
 let raise_errorf = Ppx_deriving.raise_errorf
 
-let encode_prefix = `Prefix "enc"
-let decode_prefix = `Prefix "dec"
+let encode_prefix = `Prefix "encode"
+let decode_prefix = `Prefix "decode"
 
 let argn = Printf.sprintf "arg%d"
 
@@ -194,7 +194,7 @@ let encode_sig_of_type ~options ~path type_decl =
     (polymorphize_enc  [%type: [%t typ] CConv.Encode.encoder]))
   ]
 
-(* generate a [typ CConv.Encode.decode] for the given [typ].
+(* generate a [typ CConv.Decode.decoder] for the given [typ].
   @param self an option contains the type being defined, and a reference
     indicating whether a self-reference was used *)
 let decode_of_typ ~self typ =
@@ -204,7 +204,7 @@ let decode_of_typ ~self typ =
   | [%type: bool]            -> [%expr CConv.Decode.bool]
   | [%type: string]          -> [%expr CConv.Decode.string]
   | [%type: bytes]           -> [%expr CConv.Decode.(map Bytes.to_string string)]
-  | [%type: char]            -> [%expr CConv.Decode.(map (String.make 1) string)]
+  | [%type: char]            -> [%expr CConv.Decode.(map (fun s -> String.get s 0) string)]
   | [%type: [%t? typ] ref]   -> [%expr CConv.Decode.(map (!) [%e decode_of_typ typ])]
   | [%type: [%t? typ] list]  -> [%expr CConv.Decode.(list [%e decode_of_typ typ])]
   | [%type: int32] | [%type: Int32.t] ->
@@ -351,12 +351,12 @@ let decode_sig_of_type ~options ~path type_decl =
   let typ = Ppx_deriving.core_type_of_type_decl type_decl in
   let polymorphize_enc =
     Ppx_deriving.poly_arrow_of_type_decl
-      (fun var -> [%type: [%t var] CConv.Encode.decoder])
+      (fun var -> [%type: [%t var] CConv.Decode.decoder])
       type_decl
   in
   [AH.Sig.value
-    (AH.Val.mk (mknoloc (Ppx_deriving.mangle_type_decl encode_prefix type_decl))
-    (polymorphize_enc  [%type: [%t typ] CConv.Encode.decoder]))
+    (AH.Val.mk (mknoloc (Ppx_deriving.mangle_type_decl decode_prefix type_decl))
+    (polymorphize_enc  [%type: [%t typ] CConv.Decode.decoder]))
   ]
 
 let str_of_type ~options ~path type_decl =
