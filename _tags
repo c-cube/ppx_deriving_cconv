@@ -2,7 +2,8 @@ true: warn(@5@8@10@11@12@14@23@24@26@29@40), bin_annot, safe_string
 
 "src": include
 <src/*.{ml,mli,byte,native}>: package(ppx_tools.metaquot), package(ppx_deriving.api)
-<tests/*.{ml,byte,native}>: debug, package(cconv), use_cconv, package(oUnit), \
+"tests": include
+<tests/*>: debug, package(cconv), use_cconv, package(oUnit), \
     package(bencode), package(yojson), package(cconv.bencode), \
-    package(cconv.yojson), package(ppx_deriving.show), package(ppx_deriving)
+    package(cconv.yojson), package(ppx_deriving.show)
 

@@ -23,4 +23,10 @@ build-tests: all
 tests: build-tests
 	./run_tests.native
 
+# TODO fix
+show-test-source:
+	ocamlfind ocamlc -ppxopt ppx_deriving,_build/src/ppx_deriving_cconv.cma \
+	    -package oUnit -package ppx_deriving.show -package cconv \
+	    tests/run_tests.ml -dparsetree 2>&1 | less
+
 .PHONY: all clean install uninstall tests

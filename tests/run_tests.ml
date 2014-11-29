@@ -2,21 +2,29 @@
 open OUnit
 
 module type S = sig
-  type t [@@deriving ppx_deriving_cconv,show]
+  type t [@@deriving cconv,show]
   val name : string
   val examples : t list
 end
 
-module Make(X : S) = struct
-  let bij_json ex =
-    let j = CConvYojson.encode X.encode ex in
-    let ex' = CConvYojson.decode C.decode j in
-    assert_equal ~printer:X.to_string ex' ex
+module type TEST = sig
+  val suite : OUnit.test
+end
 
-  let bij_bencode ex =
+module Make(X : S) : TEST = struct
+  let bij_json ex () =
+    let j = CConvYojson.encode X.encode ex in
+    match CConvYojson.decode X.decode j with
+    | `Ok ex' ->
+      assert_equal ~printer:X.show ex' ex
+    | `Error msg -> assert_failure msg
+
+  let bij_bencode ex () =
     let j = CConvBencode.encode X.encode ex in
-    let ex' = CConvBencode.decode C.decode j in
-    assert_equal ~printer:X.to_string ex' ex
+    match CConvBencode.decode X.decode j with
+    | `Ok ex' ->
+      assert_equal ~printer:X.show ex' ex
+    | `Error msg -> assert_failure msg
   
   let suite_of_example ex =
     [ "bij_json" >:: bij_json ex
