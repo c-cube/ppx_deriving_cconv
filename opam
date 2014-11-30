@@ -15,10 +15,15 @@ install: [
 remove: [
   "ocamlfind" "remove" "ppx_deriving_cconv"
 ]
+build-test: [
+  make "tests"
+]
 depends: [
   "cconv"
   "ppx_tools"
   "ppx_deriving" {>= "1.0"}
+  "yojson" {test}
+  "bencode" {test}
   "ocamlfind"    {build}
 ]
 
