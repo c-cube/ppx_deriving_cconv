@@ -15,34 +15,23 @@ let decode_prefix = `Prefix "decode"
 
 let argn = Printf.sprintf "arg%d"
 
-let attr_int_encoding attrs =
-  match Ppx_deriving.attr ~deriver "encoding" attrs |>
-        Ppx_deriving.Arg.(get_attr ~deriver (enum ["string"; "number"])) with
-  | Some "string" -> `String
-  | Some "number" | None -> `Int
-  | _ -> assert false
-
 let attr_string name default attrs =
   match Ppx_deriving.attr ~deriver name attrs |>
         Ppx_deriving.Arg.(get_attr ~deriver string) with
   | Some x -> x
   | None   -> default
 
-let attr_key  = attr_string "key"
-let attr_name = attr_string "name"
-
-let attr_default attrs =
-  Ppx_deriving.attr ~deriver "default" attrs |>
+let attr_encoder attrs =
+  Ppx_deriving.attr ~deriver "encoder" attrs |>
   Ppx_deriving.Arg.(get_attr ~deriver expr)
 
-let parse_options options =
-  let strict = ref true in
-  options |> List.iter (fun (name, expr) ->
-    match name with
-    | "strict" -> strict := Ppx_deriving.Arg.(get_expr ~deriver bool) expr
-    | _ -> raise_errorf ~loc:expr.pexp_loc
-      "%s does not support option %s" deriver name);
-  !strict
+let attr_decoder attrs =
+  Ppx_deriving.attr ~deriver "decoder" attrs |>
+  Ppx_deriving.Arg.(get_attr ~deriver expr)
+
+let attr_decoder attrs =
+  Ppx_deriving.attr ~deriver "cconv.ignore" attrs |>
+  Ppx_deriving.Arg.(get_attr ~deriver expr)
 
 (* fold right, with index of element *)
 let fold_right_i f l acc =
@@ -118,7 +107,6 @@ let encode_of_typ ~self typ =
 
 (* make an encoder from a type declaration *)
 let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
-  ignore (parse_options options);
   let encoder =
     match type_decl.ptype_kind, type_decl.ptype_manifest with
     | Ptype_abstract, Some manifest -> encode_of_typ ~self:None manifest
@@ -131,16 +119,19 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
             (* first, encode arguments *)
             let args = fold_right_i
               (fun i typ acc ->
+                let encoder = match attr_encoder pcd_attributes with
+                  | None -> encode_of_typ ~self typ
+                  | Some e -> e
+                in
                 [%expr CConv.Encode.hcons
-                  [%e encode_of_typ ~self typ]
+                  [%e encoder]
                   [%e AC.evar (argn i)]
                   [%e acc]
                 ]
               ) pcd_args [%expr CConv.Encode.hnil]
             in
-            let enc_name = attr_name name' pcd_attributes in
             (* result is name,arguments *)
-            let result = AC.tuple [AC.str enc_name; args] in
+            let result = AC.tuple [AC.str name'; args] in
             (* the pattern case itself *)
             AH.Exp.case
               (AC.pconstr name' (List.mapi (fun i _ -> AC.pvar (argn i)) pcd_args))
@@ -158,9 +149,13 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
             is named "r". *)
         let destruct = fold_right_i
           (fun i field tail ->
+            let encoder = match attr_encoder field.pld_attributes with
+              | None -> encode_of_typ ~self field.pld_type
+              | Some e -> e
+            in
             [%expr CConv.Encode.field
               [%e AC.str field.pld_name.txt]
-              [%e (encode_of_typ ~self field.pld_type)]
+              [%e encoder]
               [%e AH.Exp.field [%expr r] (AC.lid field.pld_name.txt)]
               [%e tail]
             ]
@@ -182,7 +177,6 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
 
 (* signature of the generated encoder *)
 let encode_sig_of_type ~options ~path type_decl =
-  ignore (parse_options options);
   let typ = Ppx_deriving.core_type_of_type_decl type_decl in
   let polymorphize_enc =
     Ppx_deriving.poly_arrow_of_type_decl
@@ -264,7 +258,6 @@ let decode_of_typ ~self typ =
 
 (* make an decoder from a type declaration *)
 let decode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
-  ignore (parse_options options);
   let decoder =
     match type_decl.ptype_kind, type_decl.ptype_manifest with
     | Ptype_abstract, Some manifest -> decode_of_typ ~self:None manifest
@@ -283,8 +276,12 @@ let decode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
               (AC.constr name'
                 (List.mapi
                   (fun i ty ->
+                    let decoder = match attr_decoder pcd_attributes with
+                      | None -> decode_of_typ ~self ty
+                      | Some d -> d
+                    in
                     [%expr CConv.Decode.apply src
-                      [%e decode_of_typ ~self ty]
+                      [%e decoder]
                       [%e AC.evar (argn i)]
                     ]
                   ) pcd_args
@@ -310,11 +307,15 @@ let decode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
             let field = record_get "field" (decode field) src args in ... *)
         let bindings = fold_right_i
           (fun i field tail ->
+            let decoder = match attr_decoder field.pld_attributes with
+              | None -> decode_of_typ ~self field.pld_type
+              | Some d -> d
+            in
             [%expr
               let [%p AC.pvar field.pld_name.txt] =
                 CConv.Decode.record_get
                 [%e AC.str field.pld_name.txt]
-                [%e (decode_of_typ ~self field.pld_type)]
+                [%e decoder]
                 src
                 args in
               [%e tail]
@@ -347,7 +348,6 @@ let decode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
 
 (* signature of the generated encoder *)
 let decode_sig_of_type ~options ~path type_decl =
-  ignore (parse_options options);
   let typ = Ppx_deriving.core_type_of_type_decl type_decl in
   let polymorphize_enc =
     Ppx_deriving.poly_arrow_of_type_decl

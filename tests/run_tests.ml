@@ -61,9 +61,23 @@ module M2 = Make(struct
   let examples = [t1]
 end)
 
+module M3 = Make(struct
+  type t = {
+    i : int [@encoder CConv.Encode.(map string_of_int string)];
+    j : int [@decoder CConv.Decode.(map int_of_string string)];
+  }
+  [@@deriving show, cconv]
+
+  let name = "record_@encoder"
+  let t1 = { i=1; j=42 }
+  let t2 = { i=10; j=0 }
+  let t3 = { i=0; j=11 }
+  let examples = [t1; t2; t3]
+end)
+
 let suite =
   "cconv" >:::
-    [ M1.suite; M2.suite ]
+    [ M1.suite; M2.suite; M3.suite ]
 
 let _ =
   OUnit.run_test_tt_main suite
