@@ -4,5 +4,6 @@ S tests/
 B _build/tests/
 PKG compiler-libs.common
 PKG ppx_deriving.api
+PKG ppx_tools.metaquot
 PKG cconv
 PKG oUnit
