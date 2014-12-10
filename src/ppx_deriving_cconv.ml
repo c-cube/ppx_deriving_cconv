@@ -85,12 +85,12 @@ let encode_of_typ ~self typ =
         (fun [%p AC.ptuple (List.mapi (fun i _ -> AC.pvar (argn i)) typs)] ->
           [%e fold_right_i
             (fun i typ acc ->
-              [%expr CConv.Encode.hcons
-                [%e encode_of_typ typ]
-                [%e AC.evar (argn i)]
+              [%expr
+                [%e encode_of_typ typ].CConv.Encode.emit into
+                [%e AC.evar (argn i)] ::
                 [%e acc]
               ]
-            ) typs [%expr CConv.Encode.hnil]
+            ) typs [%expr []]
           ]
         )
       ]
@@ -123,12 +123,12 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
                   | None -> encode_of_typ ~self typ
                   | Some e -> e
                 in
-                [%expr CConv.Encode.hcons
-                  [%e encoder]
-                  [%e AC.evar (argn i)]
+                [%expr
+                  [%e encoder].CConv.Encode.emit into
+                  [%e AC.evar (argn i)] ::
                   [%e acc]
                 ]
-              ) pcd_args [%expr CConv.Encode.hnil]
+              ) pcd_args [%expr []]
             in
             (* result is name,arguments *)
             let result = AC.tuple [AC.str name'; args] in
@@ -139,8 +139,9 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
           ) constrs
         in
         let f = AH.Exp.function_ cases in
+        let f = [%expr {CConv.Encode.sum_emit=fun into -> [%e f]}] in
         if !self_used
-        then [%expr CConv.Encode.sum_fix (fun self -> [%e f]) ]
+        then [%expr CConv.Encode.sum_fix (fun self -> [%e f])]
         else [%expr CConv.Encode.sum [%e f]]
     | Ptype_record labels, _ ->
         let self_used = ref false in
@@ -153,15 +154,15 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
               | None -> encode_of_typ ~self field.pld_type
               | Some e -> e
             in
-            [%expr CConv.Encode.field
-              [%e AC.str field.pld_name.txt]
-              [%e encoder]
-              [%e AH.Exp.field [%expr r] (AC.lid field.pld_name.txt)]
+            [%expr
+              ([%e AC.str field.pld_name.txt],
+              [%e encoder].CConv.Encode.emit into
+              [%e AH.Exp.field [%expr r] (AC.lid field.pld_name.txt)]) ::
               [%e tail]
             ]
-          ) labels [%expr CConv.Encode.record_end]
+          ) labels [%expr []]
         in
-        let destruct = [%expr fun r -> [%e destruct]] in
+        let destruct = [%expr {CConv.Encode.record_emit=fun into r -> [%e destruct]}] in
         if !self_used
         then [%expr CConv.Encode.record_fix (fun self -> [%e destruct])]
         else [%expr CConv.Encode.record [%e destruct]]
