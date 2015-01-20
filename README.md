@@ -6,6 +6,16 @@ many serializers/deserializers in one stroke.
 
 ## Usage
 
+After installation, on `OCaml >= 4.02.1`, use the library `ppx_deriving_cconv`
+(depends on `ppx_deriving` of course). The following attributes can be used
+on type declarations:
+
+- `[@@deriving cconv]` derives an encoder and a decoder for the type
+- `[@@deriving encode]` derives only an encoder (print values)
+- `[@@deriving decode]` derives only a decoder (parse values)
+
+Example:
+
 ```ocaml
 #require "ppx_deriving_cconv";;
 
@@ -61,10 +71,13 @@ val l : float list CConvYojson.or_error = `Ok [1.; 2.; 3.]
 
 ```
 
-Soon: there should be annotations `[@encoder e]`, `[@decoder d]` and
-`[@cconv.ignore_with v]`
-to specify a decoder `d`, an encoder `e`, or ignore a field at
-encoding to be filled with `v` at decoding.
+### Options
+
+Attributes can modify the behavior of `ppx_deriving_cconv`. They are as follows:
+
+- `[@encoder e]` to specify an encoder for a record field of variant argument
+- `[@decoder d]` to specify a decoder for a record field or variant argument
+- `[@cconv.ignore]` to ignore the field for encoding (decoding will still require it)
 
 ## Install
 
