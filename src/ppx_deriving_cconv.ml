@@ -53,15 +53,12 @@ let encode_of_typ ~self typ =
   | [%type: bool]            -> [%expr CConv.Encode.bool]
   | [%type: string]          -> [%expr CConv.Encode.string]
   | [%type: bytes]           -> [%expr CConv.Encode.(map Bytes.to_string string)]
-  | [%type: char]            -> [%expr CConv.Encode.(map (String.make 1) string)]
+  | [%type: char]            -> [%expr CConv.Encode.char]
   | [%type: [%t? typ] ref]   -> [%expr CConv.Encode.(map (!) [%e encode_of_typ typ])]
   | [%type: [%t? typ] list]  -> [%expr CConv.Encode.(list [%e encode_of_typ typ])]
-  | [%type: int32] | [%type: Int32.t] ->
-      [%expr CConv.Encode.(map Int32.to_int int)]
-  | [%type: int64] | [%type: Int64.t] ->
-      [%expr CConv.Encode.(map Int64.to_string string)]
-  | [%type: nativeint] | [%type: Nativeint.t] ->
-      [%expr CConv.Encode.(map Nativeint.to_string string)]
+  | [%type: int32] | [%type: Int32.t] -> [%expr CConv.Encode.int32]
+  | [%type: int64] | [%type: Int64.t] -> [%expr CConv.Encode.int64]
+  | [%type: nativeint] | [%type: Nativeint.t] -> [%expr CConv.Encode.nativeint]
   | [%type: [%t? typ] array] ->
       [%expr CConv.Encode.(array [%e encode_of_typ typ])]
   | [%type: [%t? typ] option] ->
@@ -199,15 +196,12 @@ let decode_of_typ ~self typ =
   | [%type: bool]            -> [%expr CConv.Decode.bool]
   | [%type: string]          -> [%expr CConv.Decode.string]
   | [%type: bytes]           -> [%expr CConv.Decode.(map Bytes.to_string string)]
-  | [%type: char]            -> [%expr CConv.Decode.(map (fun s -> String.get s 0) string)]
+  | [%type: char]            -> [%expr CConv.Decode.char]
   | [%type: [%t? typ] ref]   -> [%expr CConv.Decode.(map (!) [%e decode_of_typ typ])]
   | [%type: [%t? typ] list]  -> [%expr CConv.Decode.(list [%e decode_of_typ typ])]
-  | [%type: int32] | [%type: Int32.t] ->
-      [%expr CConv.Decode.(map Int32.of_int int)]
-  | [%type: int64] | [%type: Int64.t] ->
-      [%expr CConv.Decode.(map Int64.of_string string)]
-  | [%type: nativeint] | [%type: Nativeint.t] ->
-      [%expr CConv.Decode.(map Nativeint.of_string string)]
+  | [%type: int32] | [%type: Int32.t] -> [%expr CConv.Decode.int32]
+  | [%type: int64] | [%type: Int64.t] -> [%expr CConv.Decode.int64]
+  | [%type: nativeint] | [%type: Nativeint.t] -> [%expr CConv.Decode.nativeint]
   | [%type: [%t? typ] array] ->
       [%expr CConv.Decode.(array [%e decode_of_typ typ])]
   | [%type: [%t? typ] option] ->
