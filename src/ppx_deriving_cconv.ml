@@ -29,9 +29,9 @@ let attr_decoder attrs =
   Ppx_deriving.attr ~deriver "decoder" attrs |>
   Ppx_deriving.Arg.(get_attr ~deriver expr)
 
-let attr_decoder attrs =
+let attr_ignore attrs =
   Ppx_deriving.attr ~deriver "cconv.ignore" attrs |>
-  Ppx_deriving.Arg.(get_attr ~deriver expr)
+  Ppx_deriving.Arg.(get_flag ~deriver )
 
 (* fold right, with index of element *)
 let fold_right_i f l acc =
@@ -151,7 +151,9 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
               | None -> encode_of_typ ~self field.pld_type
               | Some e -> e
             in
-            [%expr
+            if attr_ignore field.pld_attributes
+            then tail (* do not encode *)
+            else [%expr
               ([%e AC.str field.pld_name.txt],
               [%e encoder].CConv.Encode.emit into
               [%e AH.Exp.field [%expr r] (AC.lid field.pld_name.txt)]) ::

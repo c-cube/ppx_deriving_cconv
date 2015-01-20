@@ -75,9 +75,25 @@ module M3 = Make(struct
   let examples = [t1; t2; t3]
 end)
 
+type record_ignore = {
+  x : int;
+  y : int [@ignore];
+} [@@deriving show, cconv]
+
+let test_record_ignore () =
+  let r = { x=1; y=2} in
+  let json = CConvYojson.encode encode_record_ignore r in
+  OUnit.assert_equal ~print:(Yojson.Basic.pretty_to_string ~std:true)
+    `Assoc ["x", `Int 1] json;
+  ()
+
 let suite =
   "cconv" >:::
-    [ M1.suite; M2.suite; M3.suite ]
+    [ M1.suite
+    ; M2.suite
+    ; M3.suite
+    ; "record_ignore" >:: test_record_ignore
+    ]
 
 let _ =
   OUnit.run_test_tt_main suite
