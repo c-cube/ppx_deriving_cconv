@@ -363,28 +363,37 @@ let sig_of_type ~options ~path type_decl =
   decode_sig_of_type ~options ~path type_decl
 
 let () =
-  Ppx_deriving.(register "cconv" {
-    core_type = None;
-    structure = (fun ~options ~path type_decls ->
+  let open Ppx_deriving in
+  register (create "cconv"
+    ~type_decl_str:(fun ~options ~path type_decls ->
       [AH.Str.value Nonrecursive
-        (List.concat (List.map (str_of_type ~options ~path) type_decls))]);
-    signature = (fun ~options ~path type_decls ->
-      List.concat (List.map (sig_of_type ~options ~path) type_decls));
-  });
-  Ppx_deriving.(register "encode" {
-    core_type = Some (encode_of_typ ~self:None);
-    structure = (fun ~options ~path type_decls ->
+        (List.concat (List.map (str_of_type ~options ~path) type_decls))]
+    )
+    ~type_decl_sig: (fun ~options ~path type_decls ->
+      List.concat (List.map (sig_of_type ~options ~path) type_decls)
+    )
+    ()
+  );
+  register (create "encode"
+    ~core_type:(encode_of_typ ~self:None)
+    ~type_decl_str: (fun ~options ~path type_decls ->
       [AH.Str.value Nonrecursive
-        (List.concat (List.map (encode_of_type ~options ~path) type_decls))]);
-    signature = (fun ~options ~path type_decls ->
-      List.concat (List.map (encode_sig_of_type ~options ~path) type_decls));
-  });
-  Ppx_deriving.(register "decode" {
-    core_type = Some (fun typ -> (decode_of_typ None typ));
-    structure = (fun ~options ~path type_decls ->
+        (List.concat (List.map (encode_of_type ~options ~path) type_decls))]
+    )
+    ~type_decl_sig: (fun ~options ~path type_decls ->
+      List.concat (List.map (encode_sig_of_type ~options ~path) type_decls)
+    )
+    ()
+  );
+  register (create "decode"
+    ~core_type:(fun typ -> (decode_of_typ None typ))
+    ~type_decl_str: (fun ~options ~path type_decls ->
       [AH.Str.value Nonrecursive
-        (List.concat (List.map (decode_of_type ~options ~path) type_decls))]);
-    signature = (fun ~options ~path type_decls ->
-      List.concat (List.map (decode_sig_of_type ~options ~path) type_decls));
-  });
+        (List.concat (List.map (decode_of_type ~options ~path) type_decls))]
+    )
+    ~type_decl_sig: (fun ~options ~path type_decls ->
+      List.concat (List.map (decode_sig_of_type ~options ~path) type_decls)
+    )
+    ()
+  );
   ()
