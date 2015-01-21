@@ -30,7 +30,7 @@ let attr_decoder attrs =
   Ppx_deriving.Arg.(get_attr ~deriver expr)
 
 let attr_ignore attrs =
-  Ppx_deriving.attr ~deriver "cconv.ignore" attrs |>
+  Ppx_deriving.attr ~deriver "ignore" attrs |>
   Ppx_deriving.Arg.(get_flag ~deriver )
 
 (* fold right, with index of element *)
@@ -47,7 +47,10 @@ let fold_right_i f l acc =
   @param self an option contains the type being defined, and a reference
     indicating whether a self-reference was used *)
 let encode_of_typ ~self typ =
-  let rec encode_of_typ typ = match typ with
+  let rec encode_of_typ typ = match attr_encoder typ.ptyp_attributes with
+    | None -> encode_of_typ_rec typ
+    | Some e -> e
+  and encode_of_typ_rec typ = match typ with
   | [%type: int]             -> [%expr CConv.Encode.int]
   | [%type: float]           -> [%expr CConv.Encode.float]
   | [%type: bool]            -> [%expr CConv.Encode.bool]
@@ -116,10 +119,7 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
             (* first, encode arguments *)
             let args = fold_right_i
               (fun i typ acc ->
-                let encoder = match attr_encoder pcd_attributes with
-                  | None -> encode_of_typ ~self typ
-                  | Some e -> e
-                in
+                let encoder = encode_of_typ ~self typ in
                 [%expr
                   [%e encoder].CConv.Encode.emit into
                   [%e AC.evar (argn i)] ::
@@ -147,18 +147,16 @@ let encode_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
             is named "r". *)
         let destruct = fold_right_i
           (fun i field tail ->
-            let encoder = match attr_encoder field.pld_attributes with
-              | None -> encode_of_typ ~self field.pld_type
-              | Some e -> e
-            in
-            if attr_ignore field.pld_attributes
+            if attr_ignore field.pld_type.ptyp_attributes
             then tail (* do not encode *)
-            else [%expr
-              ([%e AC.str field.pld_name.txt],
-              [%e encoder].CConv.Encode.emit into
-              [%e AH.Exp.field [%expr r] (AC.lid field.pld_name.txt)]) ::
-              [%e tail]
-            ]
+            else
+              let encoder = encode_of_typ ~self field.pld_type in
+              [%expr
+                ( [%e AC.str field.pld_name.txt],
+                  [%e encoder].CConv.Encode.emit into
+                    [%e AH.Exp.field [%expr r] (AC.lid field.pld_name.txt)]
+                ) :: [%e tail]
+              ]
           ) labels [%expr []]
         in
         let destruct = [%expr {CConv.Encode.record_emit=fun into r -> [%e destruct]}] in
@@ -192,7 +190,10 @@ let encode_sig_of_type ~options ~path type_decl =
   @param self an option contains the type being defined, and a reference
     indicating whether a self-reference was used *)
 let decode_of_typ ~self typ =
-  let rec decode_of_typ typ = match typ with
+  let rec decode_of_typ typ = match attr_decoder typ.ptyp_attributes with
+    | None -> decode_of_typ_rec typ
+    | Some d -> d
+  and decode_of_typ_rec typ = match typ with
   | [%type: int]             -> [%expr CConv.Decode.int]
   | [%type: float]           -> [%expr CConv.Decode.float]
   | [%type: bool]            -> [%expr CConv.Decode.bool]
