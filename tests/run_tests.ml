@@ -61,19 +61,47 @@ module M2 = Make(struct
   let examples = [t1]
 end)
 
-module M3 = Make(struct
-  type t = {
-    i : int [@encoder CConv.Encode.(map string_of_int string)];
-    j : int [@decoder CConv.Decode.(map int_of_string string)];
-  }
-  [@@deriving show, cconv]
+module M3 = struct
+  module T = struct
+    type boxed_int = {
+      bint : int;
+    } [@@deriving cconv, show]
 
-  let name = "record_@encoder"
-  let t1 = { i=1; j=42 }
-  let t2 = { i=10; j=0 }
-  let t3 = { i=0; j=11 }
-  let examples = [t1; t2; t3]
-end)
+    let box_int bint = {bint}
+    let unbox_int {bint} = bint
+
+    type t = {
+      i : int
+        [@encoder CConv.Encode.(map box_int encode_boxed_int)]
+        [@decoder CConv.Decode.(map unbox_int decode_boxed_int)];
+      j : int;
+    }
+    [@@deriving show, cconv]
+
+    let name = "record_encoder"
+    let t1 = { i=1; j=42 }
+    let t2 = { i=10; j=0 }
+    let t3 = { i=0; j=11 }
+    let examples = [t1; t2; t3]
+  end
+
+  include Make(T)
+
+  (* sort json record *)
+  let sort_json = function
+    | `Assoc l -> `Assoc (List.sort compare l)
+    | x -> x
+
+  let test_encode_yojson () =
+    let json = CConvYojson.encode T.encode T.t1 |> sort_json in
+    OUnit.assert_equal ~printer:(Yojson.Basic.pretty_to_string ~std:true)
+      (`Assoc ["i", `Assoc ["bint", `Int 1]; "j", `Int 42]) json
+
+  let suite = "" >:::
+    [ "@encoder" >:: test_encode_yojson
+    ; suite
+    ]
+end
 
 type record_ignore = {
   x : int;
@@ -83,8 +111,8 @@ type record_ignore = {
 let test_record_ignore () =
   let r = { x=1; y=2} in
   let json = CConvYojson.encode encode_record_ignore r in
-  OUnit.assert_equal ~print:(Yojson.Basic.pretty_to_string ~std:true)
-    `Assoc ["x", `Int 1] json;
+  OUnit.assert_equal ~printer:(Yojson.Basic.pretty_to_string ~std:true)
+    (`Assoc ["x", `Int 1]) json;
   ()
 
 let suite =

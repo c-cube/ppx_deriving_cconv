@@ -15,12 +15,6 @@ let decode_prefix = `Prefix "decode"
 
 let argn = Printf.sprintf "arg%d"
 
-let attr_string name default attrs =
-  match Ppx_deriving.attr ~deriver name attrs |>
-        Ppx_deriving.Arg.(get_attr ~deriver string) with
-  | Some x -> x
-  | None   -> default
-
 let attr_encoder attrs =
   Ppx_deriving.attr ~deriver "encoder" attrs |>
   Ppx_deriving.Arg.(get_attr ~deriver expr)
